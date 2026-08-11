@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
+<title>しゃべる途中式 2号機</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#222;--muted:#666;--line:#ddd;--ok:#16733c;--warn:#a45d00}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Yu Gothic","Hiragino Sans",sans-serif}
+.wrap{max-width:760px;margin:auto;padding:18px 14px 40px}
+h1{font-size:27px;margin:8px 0 4px}.sub{color:var(--muted);line-height:1.5;margin-bottom:14px}
+.card{background:var(--card);border-radius:18px;padding:15px;margin:13px 0;box-shadow:0 4px 18px rgba(0,0,0,.055)}
+.title{font-size:19px;font-weight:800;margin-bottom:10px}
+.expression{min-height:84px;border:2px solid #e4e4ea;border-radius:16px;padding:15px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800;text-align:center;word-break:break-all}
+.row{display:grid;grid-template-columns:1fr auto;gap:9px}
+input{width:100%;font-size:25px;padding:14px;border:1px solid var(--line);border-radius:14px;background:white}
+button{-webkit-tap-highlight-color:transparent;cursor:pointer}
+.addnum,.action{border:none;border-radius:14px;font-size:18px;font-weight:750;padding:14px}
+.addnum{background:#111;color:#fff;min-width:95px}
+.grid6{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.token{background:white;border:2px solid #ddd;border-radius:15px;padding:13px 6px;font-size:29px;font-weight:800}
+.token.small{font-size:22px}
+.actions{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+.action.primary{background:#111;color:white}.action.secondary{background:#ececf2;color:#222}.action.danger{background:#f2eded;color:#532b2b}
+.answerbox{min-height:64px;padding:13px;border-radius:14px;background:#f3f4f7;display:flex;align-items:center;justify-content:center;text-align:center;font-size:27px;font-weight:800}
+.message{font-size:16px;font-weight:700;margin-top:10px;line-height:1.5;min-height:24px}.ok{color:var(--ok)}.warn{color:var(--warn)}
+.mode{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #ddd;border-radius:15px;padding:12px}
+.switch{position:relative;width:54px;height:32px;flex:0 0 auto}.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:#ccc;border-radius:20px}.slider:before{content:"";position:absolute;width:26px;height:26px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s}
+.switch input:checked + .slider{background:#111}.switch input:checked + .slider:before{transform:translateX(22px)}
+.tiny{font-size:13px;color:var(--muted);line-height:1.45}.example{font-size:14px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🗣️ しゃべる途中式 2号機</h1>
+<div class="sub">数字と記号を順番に足して、式をつくろう。途中式はアプリが書くよ。</div>
+
+<div class="card"><div class="title">① いまの式</div><div id="expression" class="expression">まだ式がないよ</div><div class="example">例：12 − 5 ＋ 3 ／ ( 8 ＋ 4 ) ÷ 2</div></div>
+
+<div class="card"><div class="title">② 数字を入れる</div><div class="row"><input id="numberInput" inputmode="decimal" placeholder="数字を入力"><button id="addNumber" class="addnum">数字を追加</button></div></div>
+
+<div class="card"><div class="title">③ 記号を選ぶ</div><div class="grid6">
+<button class="token" data-token="+">＋</button><button class="token" data-token="-">−</button><button class="token" data-token="*">×</button><button class="token" data-token="/">÷</button><button class="token small" data-token="(">（</button><button class="token small" data-token=")">）</button>
+</div></div>
+
+<div class="card"><div class="title">④ あまりのある割り算</div><div class="mode"><div><b>あまりモード</b><div class="tiny">ON：17 ÷ 5 →「3 あまり 2」<br>※1回だけの整数の割り算で使います。</div></div><label class="switch"><input id="remainderMode" type="checkbox"><span class="slider"></span></label></div></div>
+
+<div class="card"><div class="actions"><button id="undo" class="action secondary">↩️ ひとつ戻す</button><button id="clear" class="action danger">🗑️ 全部消す</button><button id="calculate" class="action primary">＝ 計算する</button><button id="copyResult" class="action secondary">📋 式をコピー</button></div></div>
+
+<div class="card"><div class="title">答え</div><div id="answer" class="answerbox">ここに答えが出るよ</div><div id="message" class="message"></div></div>
+</div>
+
+<script>
+const tokens=[];
+const expressionEl=document.getElementById("expression");
+const answerEl=document.getElementById("answer");
+const messageEl=document.getElementById("message");
+const numberInput=document.getElementById("numberInput");
+const remainderMode=document.getElementById("remainderMode");
+
+function displayToken(t){if(t==="*")return"×";if(t==="/")return"÷";return t}
+function updateExpression(){expressionEl.textContent=tokens.length?tokens.map(displayToken).join(" "):"まだ式がないよ";answerEl.textContent="ここに答えが出るよ";messageEl.textContent="";messageEl.className="message"}
+function isNumberToken(t){return /^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(t||"")}
+
+function addNumber(){
+ let v=numberInput.value.trim().replace(/[０-９．－]/g,c=>({"０":"0","１":"1","２":"2","３":"3","４":"4","５":"5","６":"6","７":"7","８":"8","９":"9","．":".","－":"-"}[c]||c));
+ if(!isNumberToken(v)){messageEl.className="message warn";messageEl.textContent="数字を入れてね。";return}
+ const prev=tokens[tokens.length-1];
+ if(prev&&(isNumberToken(prev)||prev===")")){messageEl.className="message warn";messageEl.textContent="数字の前に ＋ − × ÷ のどれかを入れてね。";return}
+ tokens.push(v);numberInput.value="";updateExpression();numberInput.focus()
+}
+document.getElementById("addNumber").addEventListener("click",addNumber);
+numberInput.addEventListener("keydown",e=>{if(e.key==="Enter")addNumber()});
+
+document.querySelectorAll("[data-token]").forEach(btn=>btn.addEventListener("click",()=>{
+ const t=btn.dataset.token, prev=tokens[tokens.length-1];
+ if(t==="("){
+   if(prev&&(isNumberToken(prev)||prev===")")){messageEl.className="message warn";messageEl.textContent="（ の前には × などの記号を入れてね。";return}
+   tokens.push(t);updateExpression();return
+ }
+ if(t===")"){
+   const opens=tokens.filter(x=>x==="(").length, closes=tokens.filter(x=>x===")").length;
+   if(opens<=closes){messageEl.className="message warn";messageEl.textContent="先に （ を入れてね。";return}
+   if(!prev||["+","-","*","/","("].includes(prev)){messageEl.className="message warn";messageEl.textContent="）の前には数字か式が必要だよ。";return}
+   tokens.push(t);updateExpression();return
+ }
+ if(["+","-","*","/"].includes(t)){
+   if(!prev||["+","-","*","/","("].includes(prev)){messageEl.className="message warn";messageEl.textContent="まず数字か ） を入れてね。";return}
+   tokens.push(t);updateExpression()
+ }
+}));
+
+document.getElementById("undo").addEventListener("click",()=>{tokens.pop();updateExpression()});
+document.getElementById("clear").addEventListener("click",()=>{tokens.length=0;numberInput.value="";remainderMode.checked=false;updateExpression()});
+
+function Parser(arr){this.t=arr.slice();this.i=0}
+Parser.prototype.peek=function(){return this.t[this.i]};
+Parser.prototype.take=function(){return this.t[this.i++]};
+Parser.prototype.parseExpression=function(){let v=this.parseTerm();while(this.peek()==="+"||this.peek()==="-"){const op=this.take(),r=this.parseTerm();v=op==="+"?v+r:v-r}return v};
+Parser.prototype.parseTerm=function(){let v=this.parseFactor();while(this.peek()==="*"||this.peek()==="/"){const op=this.take(),r=this.parseFactor();if(op==="/"&&r===0)throw new Error("0では割れないよ。");v=op==="*"?v*r:v/r}return v};
+Parser.prototype.parseFactor=function(){const c=this.peek();if(c==="("){this.take();const v=this.parseExpression();if(this.take()!==")")throw new Error("（ ）の数が合ってないよ。");return v}if(isNumberToken(c)){this.take();return Number(c)}throw new Error("式の並びを確認してね。")};
+
+function calculateNormal(){const p=new Parser(tokens);const v=p.parseExpression();if(p.i!==tokens.length)throw new Error("式の並びを確認してね。");if(!Number.isFinite(v))throw new Error("計算できない式みたい。");return Math.abs(v-Math.round(v))<1e-10?Math.round(v):Number(v.toFixed(10))}
+function calculateRemainder(){
+ if(tokens.length!==3||!isNumberToken(tokens[0])||tokens[1]!=="/"||!isNumberToken(tokens[2]))throw new Error("あまりモードは「整数 ÷ 整数」の1回だけの式で使ってね。");
+ const a=Number(tokens[0]),b=Number(tokens[2]);
+ if(!Number.isInteger(a)||!Number.isInteger(b))throw new Error("あまりモードでは整数を使ってね。");
+ if(a<0||b<=0)throw new Error("今のあまりモードは、0以上の数 ÷ 1以上の数に対応してるよ。");
+ return {q:Math.floor(a/b),r:a%b}
+}
+
+document.getElementById("calculate").addEventListener("click",()=>{
+ try{
+  if(tokens.length===0)throw new Error("まず式を作ってね。");
+  const last=tokens[tokens.length-1];
+  if(["+","-","*","/","("].includes(last))throw new Error("式が途中みたい。");
+  const opens=tokens.filter(x=>x==="(").length,closes=tokens.filter(x=>x===")").length;
+  if(opens!==closes)throw new Error("（ ）の数が合ってないよ。");
+  if(remainderMode.checked){const {q,r}=calculateRemainder();answerEl.textContent=r===0?String(q):`${q} あまり ${r}`}
+  else answerEl.textContent=String(calculateNormal());
+  messageEl.className="message ok";messageEl.textContent="できた！式を順番に作れたね 🎉"
+ }catch(err){answerEl.textContent="もう一回見てみよう";messageEl.className="message warn";messageEl.textContent=err.message}
+});
+
+document.getElementById("copyResult").addEventListener("click",async()=>{
+ const text=tokens.map(displayToken).join(" ");
+ if(!text){messageEl.className="message warn";messageEl.textContent="まだ式がないよ。";return}
+ try{await navigator.clipboard.writeText(text);messageEl.className="message ok";messageEl.textContent="式をコピーしたよ。"}
+ catch{messageEl.className="message warn";messageEl.textContent="このブラウザではコピーできなかったよ。"}
+});
+updateExpression();
+</script>
+</body>
+</html>
